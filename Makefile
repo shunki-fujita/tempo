@@ -148,7 +148,7 @@ test-with-cover-others: tools ## Run other tests with code coverage
 
 # runs e2e tests in the top level integration/e2e directory
 .PHONY: test-e2e
-test-e2e: tools docker-tempo docker-tempo-query test-e2e-operations test-e2e-api test-e2e-limits test-e2e-metrics-generator test-e2e-storage test-e2e-util ## Run all e2e tests
+test-e2e: tools docker-tempo docker-tempo-query test-e2e-operations test-e2e-api test-e2e-ingest test-e2e-limits test-e2e-metrics-generator test-e2e-storage test-e2e-util ## Run all e2e tests
 	@echo "All e2e tests completed"
 
 # runs only operations e2e tests
@@ -165,6 +165,11 @@ test-e2e-api: tools docker-tempo docker-tempo-query ## Run api e2e tests
 .PHONY: test-e2e-limits
 test-e2e-limits: tools tools docker-tempo ## Run limits e2e tests
 	$(GOTEST) -v $(GOTEST_OPT) ./integration/limits
+
+# runs only ingest (Kafka SASL/TLS) integration tests
+.PHONY: test-e2e-ingest
+test-e2e-ingest: tools docker-tempo ## Run ingest (Kafka auth) e2e tests
+	$(GOTEST) -v $(GOTEST_OPT) ./integration/ingest
 
 # runs only metrics-generator integration tests
 .PHONY: test-e2e-metrics-generator

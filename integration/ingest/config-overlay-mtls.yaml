@@ -1,0 +1,16 @@
+ingest:
+  kafka:
+    tls_enabled: true
+    tls_ca_path: "{{ .TLSCAPath }}"
+    tls_cert_path: "{{ .TLSCertPath }}"
+    tls_key_path: "{{ .TLSKeyPath }}"
+    # The grafana/e2e Kafka helper issues the broker cert with a single DNS
+    # SAN that includes the docker network id, which contains underscores. The
+    # broker also advertises that underscored hostname back via metadata, so
+    # the Go TLS client would otherwise send an RFC 6066-illegal SNI (and the
+    # Java SSLEngine on the broker rejects it with "illegal parameter").
+    # Pin SNI to a DNS-valid value and skip server cert verification — this
+    # test exists to exercise the client-side mTLS handshake (broker requires
+    # and verifies the Tempo-issued client cert).
+    tls_server_name: kafka
+    tls_insecure_skip_verify: true

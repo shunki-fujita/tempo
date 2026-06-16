@@ -14,7 +14,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+	"github.com/twmb/franz-go/pkg/sasl"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kotel"
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
@@ -33,8 +35,12 @@ func NewWriterClient(kafkaCfg KafkaConfig, maxInflightProduceRequests int, logge
 		kprom.Registerer(reg),
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 
+	commonOpts, err := commonKafkaClientOptions(kafkaCfg, metrics, logger)
+	if err != nil {
+		return nil, err
+	}
 	opts := append(
-		commonKafkaClientOptions(kafkaCfg, metrics, logger),
+		commonOpts,
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.DefaultProduceTopic(kafkaCfg.Topic),
 
@@ -99,7 +105,7 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 	o.TextMapPropagator.Inject(ctx, carrier)
 }
 
-func commonKafkaClientOptions(cfg KafkaConfig, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
+func commonKafkaClientOptions(cfg KafkaConfig, metrics *kprom.Metrics, logger log.Logger) ([]kgo.Opt, error) {
 	opts := []kgo.Opt{
 		kgo.ClientID(cfg.ClientID),
 		kgo.SeedBrokers(cfg.Address),
@@ -147,14 +153,40 @@ func commonKafkaClientOptions(cfg KafkaConfig, metrics *kprom.Metrics, logger lo
 		opts = append(opts, kgo.AllowAutoTopicCreation())
 	}
 
-	// SASL plain auth.
+	// SASL auth. The mechanism is also validated in KafkaConfig.Validate; the
+	// error returned here is defence in depth for callers that skip validation.
+	// An empty mechanism is treated as PLAIN to preserve backwards
+	// compatibility with the prior PLAIN-only behavior of pkg/ingest.
 	if cfg.SASLUsername != "" && cfg.SASLPassword.String() != "" {
-		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
-			return plain.Auth{
-				User: cfg.SASLUsername,
-				Pass: cfg.SASLPassword.String(),
-			}, nil
-		})))
+		user, pass := cfg.SASLUsername, cfg.SASLPassword.String()
+		var m sasl.Mechanism
+		switch cfg.SASLMechanism {
+		case "", SASLMechanismPlain:
+			m = plain.Plain(func(_ context.Context) (plain.Auth, error) {
+				return plain.Auth{User: user, Pass: pass}, nil
+			})
+		case SASLMechanismScramSHA256:
+			m = scram.Sha256(func(_ context.Context) (scram.Auth, error) {
+				return scram.Auth{User: user, Pass: pass}, nil
+			})
+		case SASLMechanismScramSHA512:
+			m = scram.Sha512(func(_ context.Context) (scram.Auth, error) {
+				return scram.Auth{User: user, Pass: pass}, nil
+			})
+		default:
+			return nil, ErrInvalidSASLMechanism
+		}
+		opts = append(opts, kgo.SASL(m))
+	}
+
+	// TLS dialer. The TLS config is also validated in KafkaConfig.Validate; the
+	// error returned here is defence in depth for callers that skip validation.
+	if cfg.TLSEnabled {
+		tlsCfg, err := cfg.TLS.GetTLSConfig()
+		if err != nil {
+			return nil, fmt.Errorf("invalid Kafka TLS config: %w", err)
+		}
+		opts = append(opts, kgo.DialTLSConfig(tlsCfg))
 	}
 
 	tracer := kotel.NewTracer(
@@ -169,7 +201,7 @@ func commonKafkaClientOptions(cfg KafkaConfig, metrics *kprom.Metrics, logger lo
 		opts = append(opts, kgo.WithHooks(metrics))
 	}
 
-	return opts
+	return opts, nil
 }
 
 // Producer is a kgo.Client wrapper exposing some higher level features and metrics useful for producers.

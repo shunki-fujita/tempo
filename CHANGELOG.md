@@ -1,5 +1,7 @@
 <!-- next version -->
 
+* [ENHANCEMENT] Support SASL SCRAM-SHA-256 / SCRAM-SHA-512 and TLS (including mTLS) for the Kafka ingest client. New `ingest.kafka` settings: `sasl_mechanism`, `tls_enabled`, `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `tls_server_name`, `tls_insecure_skip_verify`.
+
 # v3.0.2
 
 * [CHANGE] Upgrade Tempo to Go 1.26.3 [#7423](https://github.com/grafana/tempo/pull/7423) (@ie-pham)

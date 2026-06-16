@@ -469,6 +469,40 @@ ingest:
         # The SASL password for authentication.
         [sasl_password: <string>]
 
+        # The SASL mechanism to use for authentication. Supported values are
+        # "PLAIN", "SCRAM-SHA-256", and "SCRAM-SHA-512". Defaults to "PLAIN"
+        # when SASL credentials are set.
+        [sasl_mechanism: <string>]
+
+        # Enable TLS when connecting to the Kafka brokers. Required when the
+        # broker listener uses TLS or mTLS.
+        [tls_enabled: <bool> | default = false]
+
+        # Path to the client certificate, used together with tls_key_path to
+        # authenticate to the broker via mTLS. Both must be set together.
+        [tls_cert_path: <string>]
+
+        # Path to the key for the client certificate.
+        [tls_key_path: <string>]
+
+        # Path to the CA certificates used to validate the broker certificate.
+        # If not set, the host's root CA certificates are used.
+        [tls_ca_path: <string>]
+
+        # Override the expected name on the server certificate.
+        [tls_server_name: <string>]
+
+        # Skip validating the server certificate. Not recommended for production.
+        [tls_insecure_skip_verify: <bool> | default = false]
+
+        # Override the default minimum TLS version. Allowed values:
+        # VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13.
+        [tls_min_version: <string>]
+
+        # Override the default cipher suite list (separated by commas).
+        # See `go doc crypto/tls.CipherSuites` for the allowed values.
+        [tls_cipher_suites: <string>]
+
         # Enable auto-creation of Kafka topic if it doesn't exist.
         [auto_create_topic_enabled: <bool> | default = true]
 

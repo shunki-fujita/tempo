@@ -1,0 +1,5 @@
+ingest:
+  kafka:
+    sasl_username: "{{ .SASLUsername }}"
+    sasl_password: "{{ .SASLPassword }}"
+    sasl_mechanism: "{{ .SASLMechanism }}"

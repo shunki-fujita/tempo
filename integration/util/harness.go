@@ -118,6 +118,11 @@ type TempoHarness struct {
 	Services     map[string]*e2e.HTTPService
 	TestScenario *e2e.Scenario
 
+	// Kafka is populated when the harness starts a Kafka broker. Tests can
+	// reach into it for example to request additional client certificates
+	// from the embedded CA when KafkaAuthMode is mTLS.
+	Kafka *e2edb.KafkaService
+
 	overridesPath  string
 	readinessProbe e2e.ReadinessProbe
 
@@ -164,6 +169,21 @@ type TestHarnessConfig struct {
 	// Recent data components are always started. Use this to add optional components.
 	// Defaults to ComponentsRecentDataQuerying
 	Components ComponentsMask
+
+	// KafkaAuthMode controls the authentication mode used by the embedded
+	// Kafka broker. The default (KafkaAuthNone) keeps the broker on
+	// PLAINTEXT so existing tests run unchanged. Tests that exercise the
+	// Kafka SASL / TLS configuration in pkg/ingest set this to one of the
+	// SASL / mTLS variants and pair it with a ConfigOverlay that injects the
+	// matching credentials into Tempo.
+	KafkaAuthMode e2edb.KafkaAuthMode
+
+	// PreTempoHook runs after infrastructure dependencies (Kafka, Prometheus,
+	// object storage backend) have been started but before any Tempo service
+	// boots. The hook receives the partially populated harness so tests can
+	// inspect those dependencies (for example to fetch the Kafka CA / sign a
+	// client cert when KafkaAuthMode is mTLS) before Tempo reads its config.
+	PreTempoHook func(*TempoHarness) error
 }
 
 // RunIntegrationTests sets up Tempo for integration tests as requested through the config and then calls the provided testFunc
@@ -254,17 +274,21 @@ func runTempoHarness(t *testing.T, harnessCfg TestHarnessConfig, requestedBacken
 		components &^= componentsKafka | componentsBlockBuilder
 	}
 
-	// Start Kafka
-	//   todo: should we add a field to reference kafka on the harness? not needed atm. maybe to test failure states by stopping it?
+	// Start Kafka.
 	if components&componentsKafka != 0 {
-		kafka := e2edb.NewKafka()
+		kafka := e2edb.KafkaConfig{AuthMode: harnessCfg.KafkaAuthMode}.New()
 		require.NoError(t, s.StartAndWaitReady(kafka), "failed to start Kafka")
+		harness.Kafka = kafka
 	}
 
 	if components&componentsPrometheus != 0 {
 		prometheus := newPrometheus()
 		require.NoError(t, s.StartAndWaitReady(prometheus), "failed to start prometheus")
 		harness.Services[ServicePrometheus] = prometheus
+	}
+
+	if harnessCfg.PreTempoHook != nil {
+		require.NoError(t, harnessCfg.PreTempoHook(harness), "PreTempoHook failed")
 	}
 
 	// Start Tempo services based on deployment mode
